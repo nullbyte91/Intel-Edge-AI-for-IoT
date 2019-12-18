@@ -85,3 +85,15 @@ RUN $INSTALL_DIR/install_dependencies/install_openvino_dependencies.sh
 # build Inference Engine samples
 RUN mkdir $INSTALL_DIR/deployment_tools/inference_engine/samples/build && cd $INSTALL_DIR/deployment_tools/inference_engine/samples/build && \
     /bin/bash -c "source $INSTALL_DIR/bin/setupvars.sh && cmake .. && make -j1"
+
+# OpenCV Fix
+RUN pip3 install opencv-python
+RUN apt-get update && apt-get install -y --no-install-recommends \ 
+    libcanberra-gtk-module \
+    libcanberra-gtk3-module
+
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod a+x /usr/local/bin/docker-entrypoint.sh
+RUN ln -s /usr/local/bin/docker-entrypoint.sh / # backwards compat
+
+ENTRYPOINT ["docker-entrypoint.sh"]
