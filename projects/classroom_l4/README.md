@@ -24,5 +24,3 @@ pushd src
 # Object detection inference
 python3 app.py -m ../model/ssd_mobilenet_v2_coco_2018_03_29/frozen_inference_graph.xml -ct 0.6 -c BLUE
 ```
-
-![output] (https://github.com/nullbyte91/Intel-edge-AI-foundation-udacity/blob/master/projects/classroom_l4/input/out_squeezeNet.png)
