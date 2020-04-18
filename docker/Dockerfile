@@ -88,8 +88,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcanberra-gtk-module \
     libcanberra-gtk3-module
 
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod a+x /usr/local/bin/docker-entrypoint.sh
-RUN ln -s /usr/local/bin/docker-entrypoint.sh / # backwards compat
+# Docker Read/Write permission Issue
+ARG USER_ID
+ARG GROUP_ID
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+RUN addgroup --gid $GROUP_ID user
+RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID user
+USER user
+
+RUN echo "source /opt/intel/openvino/bin/setupvars.sh -pyver 3.5" >> ~/.bashrc

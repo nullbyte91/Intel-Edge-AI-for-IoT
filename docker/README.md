@@ -1,6 +1,6 @@
 ```bash
 # To build a docker images
-docker build --rm --build-arg proxy=$http_proxy --rm --tag openvino:v1 .
+docker build --rm --tag openvino:v1 --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g) .
 
 # To Run docker images
 docker run -v /etc/localtime:/etc/localtime:ro --rm -it -e http_proxy -e https_proxy -e ftp_proxy -v `pwd`:/work openvino:v1 bash
