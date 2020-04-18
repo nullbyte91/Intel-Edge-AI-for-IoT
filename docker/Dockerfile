@@ -92,8 +92,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG USER_ID
 ARG GROUP_ID
 
+RUN apt-get update && apt-get install -y --no-install-recommends sudo 
+
 RUN addgroup --gid $GROUP_ID user
-RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID user
+RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID user &&  \
+    echo user:user | sudo chpasswd && \
+    usermod -aG sudo user
 USER user
+
+# OpenVINO Pre-trained model downloader dep
+RUN pip3 install requests PyYAML
 
 RUN echo "source /opt/intel/openvino/bin/setupvars.sh -pyver 3.5" >> ~/.bashrc
