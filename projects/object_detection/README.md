@@ -27,5 +27,7 @@ python3 mo_tf.py --input_model=model/ssd_mobilenet_v1_coco_2018_01_28/frozen_inf
 
 #### Object detection Inference
 ```python
-
+python3 people_count/python/object_detection_sample_ssd.py -i /work/myGit/Intel-Edge-AI-for-IoT/projects/people_count/images/tmg-facebook_social.jpg -m /work/myGit/Intel-Edge-AI-for-IoT/projects/people_count/mo_model/frozen_inference_graph.xml
 ```
+
+![output](images/output.png)
