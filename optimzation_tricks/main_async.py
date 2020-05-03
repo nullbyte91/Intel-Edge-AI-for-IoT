@@ -30,9 +30,6 @@ import numpy as np
 import dlib
 
 import logging as log
-import paho.mqtt.client as mqtt
-
-from fysom import *
 from imutils.video import FPS
 
 from argparse import ArgumentParser
@@ -40,11 +37,6 @@ from inference import Network
 
 # Browser and OpenCV Window toggle
 CPU_EXTENSION = "/opt/intel/openvino/deployment_tools/inference_engine/lib/intel64/libcpu_extension_sse4.so"
-
-fsm = Fysom({'initial': 'empty',
-             'events': [
-                 {'name': 'enter', 'src': 'empty', 'dst': 'standing'},
-                 {'name': 'exit',  'src': 'standing',   'dst': 'empty'}]})
 
 def build_argparser():
     """
@@ -103,11 +95,6 @@ def infer_on_stream(args):
     cap.open(args.input)
     _, frame = cap.read()
 
-    people_count = 0
-    g_elapsed = 0
-    enter_xpix = 300
-    exit_xpix = 760
-
     fps = FPS().start()
     # Process frames until the video ends, or process is exited
     while cap.isOpened():
@@ -139,39 +126,7 @@ def infer_on_stream(args):
                     xmax = int(box[5] * fw)
                     ymax = int(box[6] * fh)
                     cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 125, 255), 3)
-                    if xmin < enter_xpix:  
-                        if fsm.current == "empty":
-                            # Count a people
-                            people_count += 1
-                            # Start the timer
-                            start_time = time.perf_counter()
-                            # Person entered a room - fsm state change
-                            fsm.enter()
-                    
-                    if xmax > exit_xpix:
-                        if fsm.current == "standing":
-                            # Change the state to exit - fsm state change
-                            fsm.exit()
-                            stop_time = time.perf_counter()
-                            elapsed = stop_time - start_time
-                            
-                            # Update average time
-                            log.info("elapsed time = {:.12f} seconds".format(elapsed))
-                            g_elapsed = (g_elapsed + elapsed) / people_count
-                            log.info("g_elapsed time = {:.12f} seconds".format(g_elapsed))
-                    log.info("xmin:{} ymin:{} xmax:{} ymax{}".format(xmin, ymin, xmax, ymax))
         current_inference, next_inference = next_inference, current_inference
-
-        # Update info on frame
-        info = [
-            ("people_ccount", people_count),
-        ]
-        
-        # loop over the info tuples and draw them on our frame
-        for (i, (k, v)) in enumerate(info):
-            text = "{}: {}".format(k, v)
-            cv2.putText(frame, text, (10, fh - ((i * 20) + 20)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
         cv2.imshow('frame', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):

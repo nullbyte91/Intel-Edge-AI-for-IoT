@@ -30,27 +30,18 @@ import numpy as np
 import dlib
 
 import logging as log
-import paho.mqtt.client as mqtt
-
-from fysom import *
 from imutils.video import FPS
 
 from argparse import ArgumentParser
 from inference import Network
 
-# MQTT server environment variables
-HOSTNAME = socket.gethostname()
-IPADDRESS = socket.gethostbyname(HOSTNAME)
-MQTT_HOST = IPADDRESS
-MQTT_PORT = 3001
-MQTT_KEEPALIVE_INTERVAL = 60
+from multiprocessing import Process, Queue
+import multiprocessing
+import threading
+import queue
 
+# Browser and OpenCV Window toggle
 CPU_EXTENSION = "/opt/intel/openvino/deployment_tools/inference_engine/lib/intel64/libcpu_extension_sse4.so"
-
-fsm = Fysom({'initial': 'empty',
-             'events': [
-                 {'name': 'enter', 'src': 'empty', 'dst': 'standing'},
-                 {'name': 'exit',  'src': 'standing',   'dst': 'empty'}]})
 
 def build_argparser():
     """
@@ -79,21 +70,67 @@ def build_argparser():
     return parser
 
 
-def connect_mqtt():
-    ### TODO: Connect to the MQTT client ###
-    client = None
+def image_process_worker(cap, frame_queue, image_queue, in_n, in_c, in_h, in_w):
+    # Process frames until the video ends, or process is exited
+    while cap.isOpened():
+        # Read the next frame
+        flag, frame = cap.read()
+        if not flag:
+            frame_queue.put(None)
+            image_queue.put(None)
+            break
 
-    return client
+        # Pre-process the frame
+        image_resize = cv2.resize(frame, (in_w, in_h))
+        image = image_resize.transpose((2,0,1))
+        image = image.reshape(in_n, in_c, in_h, in_w)
+        
+        frame_queue.put(frame)
+        image_queue.put(image)
+    
 
-def infer_on_stream(args, client):
+def network_inference(infer_network, frame_queue, image_queue, 
+                        fw, fh, prob_threshold, fps):
+    current_inference, next_inference = 0, 1
+    while True:
+        image = image_queue.get()
+        if image is None:
+            break
+        frame = frame_queue.get()
+        # Perform inference on the frame
+        infer_network.exec_net_async(image, request_id=current_inference)
+
+        # Get the output of inference
+        if infer_network.wait(next_inference) == 0:
+            detection = infer_network.get_output(next_inference)
+            for box in detection[0][0]: # Output shape is 1x1x100x7
+                conf = box[2]
+                if conf >= prob_threshold:
+                    xmin = int(box[3] * fw)
+                    ymin = int(box[4] * fh)
+                    xmax = int(box[5] * fw)
+                    ymax = int(box[6] * fh)
+                    cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 125, 255), 3)
+        current_inference, next_inference = next_inference, current_inference
+
+        cv2.imshow('frame', frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        fps.update()
+
+
+def infer_on_stream(args):
     """
     Initialize the inference network, stream video to network,
     and output stats and video.
 
     :param args: Command line arguments parsed by `build_argparser()`
-    :param client: MQTT client
     :return: None
     """
+
+    frame_queue = queue.Queue(maxsize= 4)
+    image_queue = queue.Queue(maxsize= 4)
+
     # Initialize the Inference Engine
     infer_network = Network()
 
@@ -101,7 +138,7 @@ def infer_on_stream(args, client):
     prob_threshold = args.prob_threshold
 
     # Load the model through `infer_network`
-    infer_network.load_model(args.model, args.device, CPU_EXTENSION)
+    infer_network.load_model(args.model, args.device, CPU_EXTENSION, num_requests=2)
 
     # Get a Input blob shape
     in_n, in_c, in_h, in_w = infer_network.get_input_shape()
@@ -114,85 +151,24 @@ def infer_on_stream(args, client):
     cap.open(args.input)
     _, frame = cap.read()
 
-    people_count = 0
-    g_elapsed = 0
-    enter_xpix = 300
-    exit_xpix = 760
 
     fps = FPS().start()
-    # Process frames until the video ends, or process is exited
-    while cap.isOpened():
-        # Read the next frame
-        flag, frame = cap.read()
-        if not flag:
-            break
-        
-        fh = frame.shape[0]
-        fw = frame.shape[1]
-        key_pressed = cv2.waitKey(60)
-
-        # Pre-process the frame
-        image_resize = cv2.resize(frame, (in_w, in_h))
-        image = image_resize.transpose((2,0,1))
-        image = image.reshape(in_n, in_c, in_h, in_w)
-        
-        # Perform inference on the frame
-        infer_network.exec_net(image)
-        
-        # Get the output of inference
-        if infer_network.wait() == 0:
-            result = infer_network.get_output()
-            for box in result[0][0]: # Output shape is 1x1x100x7
-                conf = box[2]
-                if conf >= prob_threshold:
-                    xmin = int(box[3] * fw)
-                    ymin = int(box[4] * fh)
-                    xmax = int(box[5] * fw)
-                    ymax = int(box[6] * fh)
-                    cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 125, 255), 3)
-                    if xmin < enter_xpix:  
-                        if fsm.current == "empty":
-                            # Count a people
-                            people_count += 1
-                            # Start the timer
-                            start_time = time.perf_counter()
-                            # Person entered a room - fsm state change
-                            fsm.enter()
-
-                    if xmax > exit_xpix:
-                        if fsm.current == "standing":
-                            # Change the state to exit - fsm state change
-                            fsm.exit()
-                            stop_time = time.perf_counter()
-                            elapsed = stop_time - start_time
-                            
-                            # Update average time
-                            log.info("elapsed time = {:.12f} seconds".format(elapsed))
-                            g_elapsed = (g_elapsed + elapsed) / people_count
-                            log.info("g_elapsed time = {:.12f} seconds".format(g_elapsed))
-                    
-                    log.info("xmin:{} ymin:{} xmax:{} ymax{}".format(xmin, ymin, xmax, ymax))
-        # Update info on frame
-        info = [
-            ("people_ccount", people_count),
-            ("g_elapsed", g_elapsed),
-        ]
-        
-        # loop over the info tuples and draw them on our frame
-        for (i, (k, v)) in enumerate(info):
-            text = "{}: {}".format(k, v)
-            cv2.putText(frame, text, (10, fh - ((i * 20) + 20)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-
-        cv2.imshow('frame', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-        # Break if escape key pressed
-        if key_pressed == 27:
-            break
-        fps.update()
     
+    _s, frame = cap.read()
+    fh = frame.shape[0]
+    fw = frame.shape[1]
+    
+    preprocess_thread = None
+
+    preprocess_thread = threading.Thread(target=image_process_worker, 
+                        args=(cap, frame_queue, image_queue, in_n, in_c, in_h, in_w))
+
+    preprocess_thread.start()
+    
+    network_inference(infer_network, frame_queue, image_queue, fw, fh, prob_threshold, fps)
+    
+    preprocess_thread.join()
+
     # Release the out writer, capture, and destroy any OpenCV windows
     cap.release()
     cv2.destroyAllWindows()
@@ -208,14 +184,12 @@ def main():
     """
     # set log level
     log.basicConfig(filename='example.log',level=log.CRITICAL)
+    
     # Grab command line args
     args = build_argparser().parse_args()
-    # Connect to the MQTT server
-    #client = connect_mqtt()
-    # Perform inference on the input stream
-    client = None 
-    infer_on_stream(args, client)
 
+    # Inference
+    infer_on_stream(args)
 
 if __name__ == '__main__':
     main()

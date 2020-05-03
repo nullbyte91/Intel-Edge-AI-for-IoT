@@ -11,3 +11,15 @@ As part of the process, it can perform various optimizations that can help shrin
 
 #### Inference Engine:
 The Inference Engine runs the actual inference on a model at the Edge. It only works with the Intermediate Representations(IR) that come from the Model Optimizer, or the Intel® Pre-Trained Models in OpenVINO™ that are already in IR format.
+
+### Pre-Trained Models in OpenVINO™
+```python
+cd /opt/intel/openvino/deployment_tools/open_model_zoo/tools/downloader
+```
+Within there, you'll notice a downloader.py file, and can use the -h argument with it to see available arguments. For this exercise, --name for model name, and --precisions, used when only certain precisions are desired, are the important arguments. Note that running downloader.py without these will download all available pre-trained models, which will be multiple gigabytes. You can do this on your local machine, if desired, but the workspace will not allow you to store that much information.
+
+i.e <b>Downloading Human Pose Model</b>
+
+```python
+sudo ./downloader.py --name human-pose-estimation-0001 -o /home/workspace 
+```
