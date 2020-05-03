@@ -88,7 +88,9 @@ def infer_on_stream(args):
     prob_threshold = args.prob_threshold
 
     # Load the model through `infer_network`
-    infer_network.load_model(args.model, args.device, CPU_EXTENSION)
+    infer_network.load_model(args.model, args.device, CPU_EXTENSION, num_requests=2)
+
+    current_inference, next_inference = 0, 1
 
     # Get a Input blob shape
     in_n, in_c, in_h, in_w = infer_network.get_input_shape()
@@ -124,11 +126,11 @@ def infer_on_stream(args):
         image = image.reshape(in_n, in_c, in_h, in_w)
         
         # Perform inference on the frame
-        infer_network.exec_net_async(image)
+        infer_network.exec_net_async(image, request_id=current_inference)
 
         # Get the output of inference
-        if infer_network.wait() == 0:
-            detection = infer_network.get_output()
+        if infer_network.wait(next_inference) == 0:
+            detection = infer_network.get_output(next_inference)
             for box in detection[0][0]: # Output shape is 1x1x100x7
                 conf = box[2]
                 if conf >= prob_threshold:
@@ -158,7 +160,8 @@ def infer_on_stream(args):
                             g_elapsed = (g_elapsed + elapsed) / people_count
                             log.info("g_elapsed time = {:.12f} seconds".format(g_elapsed))
                     log.info("xmin:{} ymin:{} xmax:{} ymax{}".format(xmin, ymin, xmax, ymax))
-       
+        current_inference, next_inference = next_inference, current_inference
+
         # Update info on frame
         info = [
             ("people_ccount", people_count),
