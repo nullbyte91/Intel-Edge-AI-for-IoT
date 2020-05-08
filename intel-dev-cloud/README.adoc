@@ -1,0 +1,147 @@
+= OpenVino For People Counter
+:idprefix:
+:idseparator: -
+:sectanchors:
+:sectlinks:
+:sectnumlevels: 6
+:sectnums:
+:toc: macro
+:toclevels: 6
+:toc-title: Table of Contents
+
+toc::[]
+
+== Introduction
+The DevCloud is a cluster of Intel® Xeon® Scalable Processors that will helps us to build, prototype, and check the performance of our application on several different hardware devices and get the conclusion which hardware best fit for your requirement.
+
+== Software Components
+1. *User*: That’s you, connecting via a browser to a development server.
+2. *Development Server*: The development server offers Jupyter notebooks, where you can run your program.
+3. *Job Queue*: This is where you select the hardware to run your application. In order to request the hardware, you need to submit a job requesting an edge node.
+4. *Edge Node*: You can submit your job to a hardware platform containing a specific target architecture or a combination of CPU, GPU, VPU, and FPGA architectures.
+5. *Inference Output*: You can view real-time performance results of your jobs as a text file or a real-time annotated video.
+
+== Running Inference
+=== Create a Inference model
+```python
+%%writefile inference_on_device.py
+
+import time
+import cv2
+import numpy as np
+from openvino.inference_engine import IENetwork
+from openvino.inference_engine import IECore
+import argparse
+
+def main(args):
+    model=args.model_path
+    model_weights=model+'.bin'
+    model_structure=model+'.xml'
+    batches=int(args.batches)
+    
+    start=time.time()
+    model=IENetwork(model_structure, model_weights)
+    model.batch_size=batches
+
+    core = IECore()
+    net = core.load_network(network=model, device_name=args.device, num_requests=1)
+    load_time=time.time()-start
+    print(f"Time taken to load model = {load_time} seconds")
+    
+    # Get the name of the input node
+    input_name=next(iter(model.inputs))
+
+    # Reading and Preprocessing Image
+    input_img=cv2.imread('/data/resources/car.png')
+    input_img=cv2.resize(input_img, (300,300), interpolation = cv2.INTER_AREA)
+    input_img=np.moveaxis(input_img, -1, 0)
+
+    # Running Inference in a loop on the same image
+    input_dict={input_name:[input_img]*batches}
+    
+    if batches==1:
+        iterations=1000
+    else:
+        iterations=100
+
+    start=time.time()
+    for _ in range(iterations):
+        net.infer(input_dict)
+    
+    inference_time=time.time()-start
+    fps=100/inference_time
+    
+    print(f"Time Taken to run 1000 Inferences is = {inference_time} seconds")
+    
+    with open(f"/output/{args.path}.txt", "w") as f:
+        f.write(str(load_time)+'\n')
+        f.write(str(inference_time)+'\n')
+        f.write(str(fps)+'\n')
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--model_path', required=True)
+    parser.add_argument('--device', default=None)
+    parser.add_argument('--path', default=None)
+    parser.add_argument('--batches', default=None)
+    
+    args=parser.parse_args() 
+    main(args)
+```
+
+=== Create a Job submission script
+```python
+%%writefile inference_model_job.sh
+#!/bin/bash
+
+exec 1>/output/stdout.log 2>/output/stderr.log
+
+mkdir -p /output
+
+DEVICE=$1
+BATCHES=$2
+MODELPATH=$3
+SAVEPATH=$4
+
+
+# Run the load model python script
+python3 inference_on_device.py  --model_path ${MODELPATH} --device ${DEVICE} --path ${SAVEPATH} --batches ${BATCHES}
+
+cd /output
+
+tar zcvf output.tgz *
+```
+
+=== Submitting a Job to Intel's DevCloud
+==== Running on the CPU
+```python
+cpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:up-squared -F "CPU 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 cpu_stats" -N store_core 
+print(cpu_job_id_core[0])
+```
+
+==== Running on the GPU
+```python
+gpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:up-squared -F "GPU 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 cpu_stats" -N store_core 
+print(gpu_job_id_core[0])
+```
+
+=== To get the status 
+```python
+import liveQStat
+liveQStat.liveQStat()
+```
+
+=== Retrieving Result
+==== To get the CPU Result
+```python
+import get_results
+
+get_results.getResults(cpu_job_id_core[0], filename="output.tgz", blocking=True)
+```
+
+==== To get the GPU Result
+```python
+import get_results
+
+get_results.getResults(gpu_job_id_core[0], filename="output.tgz", blocking=True)
+```
