@@ -113,16 +113,23 @@ tar zcvf output.tgz *
 ```
 
 === Submitting a Job to Intel's DevCloud
+
 ==== Running on the CPU
 ```python
-cpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:up-squared -F "CPU 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 cpu_stats" -N store_core 
+cpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:i5-6500te -F "CPU 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 cpu_stats" -N store_core 
 print(cpu_job_id_core[0])
 ```
 
 ==== Running on the GPU
 ```python
-gpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:up-squared -F "GPU 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 cpu_stats" -N store_core 
+gpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:intel-hd-530 -F "GPU 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 gpu_stats" -N store_core 
 print(gpu_job_id_core[0])
+```
+
+=== Running on the VPU
+```python
+vpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:intel-ncs2 -F "MYRIAD 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 vpu_stats" -N store_core 
+print(vpu_job_id_core[0])
 ```
 
 === To get the status 
@@ -145,3 +152,13 @@ import get_results
 
 get_results.getResults(gpu_job_id_core[0], filename="output.tgz", blocking=True)
 ```
+
+=== To get the VPU Result
+```python
+import get_results
+get_results.getResults(vpu_job_id_core[0], filename="output.tgz", blocking=True)
+```
+
+[quote]
+List of supported devices and labels avaible here https://devcloud.intel.com/edge/get_started/devcloud/
+
