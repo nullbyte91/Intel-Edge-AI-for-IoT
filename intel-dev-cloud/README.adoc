@@ -90,7 +90,8 @@ if __name__=='__main__':
 ```
 
 === Create a Job submission script
-```python
+==== CPU, GPU, and VPU
+```bash
 %%writefile inference_model_job.sh
 #!/bin/bash
 
@@ -112,51 +113,114 @@ cd /output
 tar zcvf output.tgz *
 ```
 
+==== FPGA
+TO Run a models on the FPGA, we need to use a bitstream file and program our FPGA. We will do this with the aocl program command.
+
+```bash
+%%writefile inference_fpga_model_job.sh
+#!/bin/bash
+
+exec 1>/output/stdout.log 2>/output/stderr.log
+
+mkdir -p /output
+
+DEVICE=$1
+MODELPATH=$2
+
+
+source /opt/intel/init_openvino.sh
+aocl program acl0 /opt/intel/openvino/bitstreams/a10_vision_design_sg1_bitstreams/2019R4_PL1_FP16_MobileNet_Clamp.aocx
+
+
+# Run the load model python script
+python3 inference_on_device.py  --model_path ${MODELPATH} --device ${DEVICE}
+
+cd /output
+
+tar zcvf output.tgz stdout.log stderr.log
+```
+
 === Submitting a Job to Intel's DevCloud
 
 ==== Running on the CPU
-```python
+```bash
 cpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:i5-6500te -F "CPU 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 cpu_stats" -N store_core 
 print(cpu_job_id_core[0])
 ```
 
 ==== Running on the GPU
-```python
+```bash
 gpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:intel-hd-530 -F "GPU 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 gpu_stats" -N store_core 
 print(gpu_job_id_core[0])
 ```
 
-=== Running on the VPU
-```python
+==== Running on the VPU
+```bash
 vpu_job_id_core = !qsub inference_model_job.sh -d . -l nodes=1:intel-ncs2 -F "MYRIAD 1 /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 vpu_stats" -N store_core 
 print(vpu_job_id_core[0])
 ```
 
+==== Running on Multiple device [VPU, CPU, GPU]
+```bash
+job_id_core = !qsub load_multi_model_job.sh -d . -l nodes=1:tank-870:i5-6500te:intel-hd-530:intel-ncs2 -F "MULTI:MYRIAD,GPU,CPU /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP16/vehicle-license-plate-detection-barrier-0106" -N store_core 
+print(job_id_core[0])
+```
+
+==== Running on FPGA and CPU
+```bash
+fpga_cpu_job = !qsub inference_model_job.sh -d . -l nodes=1:tank-870:i5-6500te:iei-mustang-f100-a10 -F "HETERO:FPGA,CPU /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106 fpga_cpu_stats" -N store_core
+print(fpga_cpu_job[0])
+```
+
+==== Running on FPGA, CPU and GPU
+```bash
+fpga_gpu_cpu_job = !qsub inference_model_job.sh -d . -l nodes=1:tank-870:i5-6500te:iei-mustang-f100-a10:intel-hd-530 -F "HETERO:FPGA,GPU,CPU /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP16/vehicle-license-plate-detection-barrier-0106 fpga_gpu_cpu_stats" -N store_core 
+print(fpga_gpu_cpu_job[0])
+```
+```bash
+#CPU and vpu
+cpu_vpu_job_id_core = !qsub load_multi_model_job.sh -d . -l nodes=1:tank-870:i5-6500te:intel-ncs2 -F "MULTI:MYRIAD,CPU /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP16/vehicle-license-plate-detection-barrier-0106" -N store_core 
+print(cpu_vpu_job_id_core[0])
+```
+
+==== Running on FPGA
+```bash
+job_id_core = !qsub inference_fpga_model_job.sh -d . -l nodes=1:tank-870:i5-6500te:iei-mustang-f100-a10 -F "HETERO:FPGA,CPU /data/models/intel/vehicle-license-plate-detection-barrier-0106/FP32/vehicle-license-plate-detection-barrier-0106" -N store_core 
+print(job_id_core[0])
+```
+
 === To get the status 
-```python
+```bash
 import liveQStat
 liveQStat.liveQStat()
 ```
 
 === Retrieving Result
 ==== To get the CPU Result
-```python
+```bash
 import get_results
 
 get_results.getResults(cpu_job_id_core[0], filename="output.tgz", blocking=True)
 ```
 
 ==== To get the GPU Result
-```python
+```bash
 import get_results
 
 get_results.getResults(gpu_job_id_core[0], filename="output.tgz", blocking=True)
 ```
 
-=== To get the VPU Result
-```python
+==== To get the VPU Result
+```bash
 import get_results
 get_results.getResults(vpu_job_id_core[0], filename="output.tgz", blocking=True)
+```
+
+==== To get the FPGA Result
+```bash
+import get_results
+
+get_results.getResults(job_id_core[0], filename="output.tgz", blocking=True) 
 ```
 
 [quote]
